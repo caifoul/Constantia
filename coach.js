@@ -4,6 +4,7 @@ import { collection, doc, setDoc, getDocs } from 'https://www.gstatic.com/fireba
 import { getMotivationalMessage } from './motivation.js';
 import { showWarmup } from './warmup.js';
 import { initSetRows, renderSetRows, readSetDetails, summarizeSets } from './set-rows.js';
+import { startWorkoutTimer, stopWorkoutTimer, restoreWorkoutTimer } from './workout-timer.js';
 
 // ── Exercise alternatives ─────────────────────────────────────────
 const ALTERNATIVES = {
@@ -68,6 +69,40 @@ const state = {
   currentUser:    null,
 };
 
+const COACH_SESSION_KEY = 'coachActiveSession';
+
+function persistCoachSession() {
+  if (!state.currentWorkout) { clearCoachSession(); return; }
+  try {
+    localStorage.setItem(COACH_SESSION_KEY, JSON.stringify({
+      currentWorkout: state.currentWorkout,
+      exerciseQueue:  state.exerciseQueue,
+      currentIndex:   state.currentIndex,
+      logged:         state.logged,
+      skipped:        Array.from(state.skipped),
+    }));
+  } catch (_) {}
+}
+
+function restoreCoachSession() {
+  try {
+    const raw = localStorage.getItem(COACH_SESSION_KEY);
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    if (!s?.currentWorkout) return false;
+    state.currentWorkout = s.currentWorkout;
+    state.exerciseQueue  = s.exerciseQueue  || [];
+    state.currentIndex   = s.currentIndex   || 0;
+    state.logged         = s.logged         || [];
+    state.skipped        = new Set(s.skipped || []);
+    return true;
+  } catch (_) { return false; }
+}
+
+function clearCoachSession() {
+  localStorage.removeItem(COACH_SESSION_KEY);
+}
+
 // ── DOM helpers ───────────────────────────────────────────────────
 const qs = id => document.getElementById(id);
 
@@ -86,10 +121,30 @@ function getLastLog(exerciseName) {
   return null;
 }
 
+function getRepRange() {
+  try {
+    const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+    const raw = profile.preferredRepRange || profile.hypertrophy?.preferredRepRange || '';
+    const m = raw.match(/(\d+)\s*[-–]\s*(\d+)/);
+    if (m) return { min: parseInt(m[1]), max: parseInt(m[2]) };
+  } catch (_) {}
+  return null;
+}
+
 function getSmartDefault(exerciseName) {
-  const last = getLastLog(exerciseName);
-  if (last) return { sets: last.sets, reps: Math.min(last.reps + 1, 15), weight: last.weight };
-  return { sets: 3, reps: 8, weight: 100 };
+  const last  = getLastLog(exerciseName);
+  if (!last) return { sets: 3, reps: 8, weight: 100 };
+
+  const range = getRepRange();
+  if (range) {
+    if (last.reps >= range.max) {
+      return { sets: last.sets, reps: range.min, weight: last.weight + 10 };
+    }
+    if (last.reps < range.min) {
+      return { sets: last.sets, reps: range.min, weight: Math.max(0, last.weight - 5) };
+    }
+  }
+  return { sets: last.sets, reps: last.reps + 1, weight: last.weight };
 }
 
 // ── Workout suggestion ────────────────────────────────────────────
@@ -182,12 +237,14 @@ function startWorkout(workoutId) {
     state.currentIndex   = 0;
     state.logged         = [];
     state.skipped        = new Set();
+    persistCoachSession();
+    startWorkoutTimer();
     showExercise(0);
   });
 }
 
 // ── Show exercise ─────────────────────────────────────────────────
-function showExercise(index) {
+function showExercise(index, prefill = null) {
   // Skip over already-logged indices if we're cycling back
   while (index < state.exerciseQueue.length && state.logged.some(l => l._queueIndex === index)) {
     index++;
@@ -220,13 +277,43 @@ function showExercise(index) {
     ? `Last time: ${last.sets}×${last.reps} @ ${last.weight} lbs`
     : 'First time doing this one!';
 
-  qs('active-sets').value = def.sets;
-  initSetRows(qs('active-sets-detail'), def.sets, def.reps, def.weight);
-  qs('active-notes').value  = '';
+  const fillSets   = prefill?.sets   ?? def.sets;
+  const fillReps   = prefill?.reps   ?? def.reps;
+  const fillWeight = prefill?.weight ?? def.weight;
+  qs('active-sets').value = fillSets;
+  initSetRows(qs('active-sets-detail'), fillSets, fillReps, fillWeight, prefill?.setDetails ?? null);
+  qs('active-notes').value = prefill?.notes ?? '';
 
   qs('machine-taken-panel').classList.add('hidden');
   qs('quit-panel').classList.add('hidden');
+  updateUndoBtn();
   showScreen('screen-active');
+}
+
+// ── Undo last log ─────────────────────────────────────────────────
+function updateUndoBtn() {
+  const btn = qs('undo-last-btn');
+  if (!btn) return;
+  if (state.logged.length > 0) {
+    const name = state.logged[state.logged.length - 1].name;
+    btn.textContent = `↩ Undo: ${name}`;
+    btn.classList.remove('hidden');
+  } else {
+    btn.classList.add('hidden');
+  }
+}
+
+function undoLastLog() {
+  if (!state.logged.length) return;
+  const last = state.logged.pop();
+  persistCoachSession();
+  showExercise(last._queueIndex, {
+    sets:       last.sets,
+    reps:       last.reps,
+    weight:     last.weight,
+    setDetails: last.setDetails,
+    notes:      last.notes,
+  });
 }
 
 // ── Machine taken panel ───────────────────────────────────────────
@@ -280,6 +367,7 @@ function logCurrentExercise() {
     favorite: false,
     _queueIndex: state.currentIndex,
   });
+  persistCoachSession();
 
   // Find next un-done exercise
   const next = state.exerciseQueue.findIndex(
@@ -294,6 +382,35 @@ function logCurrentExercise() {
   } else {
     showExercise(next);
   }
+}
+
+// ── Add exercise mid-session ──────────────────────────────────────
+function showCoachAddPanel() {
+  qs('machine-taken-panel').classList.add('hidden');
+  qs('quit-panel').classList.add('hidden');
+  qs('skipped-panel').classList.add('hidden');
+  qs('coach-add-name').value = '';
+  qs('coach-add-sets').value = 3;
+  qs('coach-add-reps').value = 8;
+  qs('coach-add-weight').value = 100;
+  qs('coach-add-panel').classList.remove('hidden');
+  qs('coach-add-name').focus();
+}
+
+function hideCoachAddPanel() {
+  qs('coach-add-panel').classList.add('hidden');
+}
+
+function addExerciseToQueue() {
+  const name   = qs('coach-add-name').value.trim();
+  const sets   = parseInt(qs('coach-add-sets').value)   || 3;
+  const reps   = parseInt(qs('coach-add-reps').value)   || 8;
+  const weight = parseFloat(qs('coach-add-weight').value) || 0;
+  if (!name) { qs('coach-add-name').focus(); return; }
+  state.exerciseQueue.push({ name, sets, reps, weight });
+  persistCoachSession();
+  hideCoachAddPanel();
+  updateSkippedBtn();
 }
 
 // ── Skipped button / panel ────────────────────────────────────────
@@ -342,6 +459,7 @@ function skipExercise() {
   state.skipped.add(state.currentIndex);
   qs('machine-taken-panel').classList.add('hidden');
   updateSkippedBtn();
+  persistCoachSession();
 
   const next = state.exerciseQueue.findIndex(
     (_, i) => i > state.currentIndex &&
@@ -355,6 +473,7 @@ function jumpToExercise(targetIndex) {
   state.skipped.add(state.currentIndex);
   qs('machine-taken-panel').classList.add('hidden');
   updateSkippedBtn();
+  persistCoachSession();
   showExercise(targetIndex);
 }
 
@@ -364,6 +483,7 @@ function substituteExercise(name) {
     name,
   };
   qs('machine-taken-panel').classList.add('hidden');
+  persistCoachSession();
   showExercise(state.currentIndex);
 }
 
@@ -385,6 +505,8 @@ function hideQuitPanel() {
 async function endEarly() {
   hideQuitPanel();
   if (state.logged.length === 0) {
+    clearCoachSession();
+    stopWorkoutTimer();
     state.currentWorkout = null;
     state.exerciseQueue  = [];
     state.logged         = [];
@@ -436,6 +558,8 @@ function showComplete() {
 // ── Save workout ──────────────────────────────────────────────────
 async function saveAndEnd() {
   if (!state.logged.length) return;
+  clearCoachSession();
+  stopWorkoutTimer();
 
   const sessionId = state.currentWorkout.id || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const session = {
@@ -505,6 +629,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Active
   qs('active-done-btn').addEventListener('click', logCurrentExercise);
   qs('active-machine-taken-btn').addEventListener('click', showMachineTaken);
+  qs('undo-last-btn').addEventListener('click', undoLastLog);
   qs('end-early-btn').addEventListener('click', showQuitPanel);
   qs('quit-cancel-btn').addEventListener('click', hideQuitPanel);
   qs('quit-confirm-btn').addEventListener('click', endEarly);
@@ -516,6 +641,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target.id === 'skip-exercise-btn')     skipExercise();
     if (e.target.id === 'cancel-machine-taken-btn') qs('machine-taken-panel').classList.add('hidden');
   });
+
+  // Add exercise
+  qs('coach-add-exercise-btn').addEventListener('click', showCoachAddPanel);
+  qs('coach-add-cancel-btn').addEventListener('click', hideCoachAddPanel);
+  qs('coach-add-confirm-btn').addEventListener('click', addExerciseToQueue);
+  qs('coach-add-name').addEventListener('keydown', e => { if (e.key === 'Enter') addExerciseToQueue(); });
 
   // Skipped panel
   qs('view-skipped-btn').addEventListener('click', toggleSkippedPanel);
@@ -546,6 +677,11 @@ onAuthStateChanged(auth, async user => {
   state.currentUser = user;
   if (user) {
     await loadAllWorkouts();
-    renderHome();
+    if (restoreCoachSession()) {
+      restoreWorkoutTimer();
+      showExercise(state.currentIndex);
+    } else {
+      renderHome();
+    }
   }
 });

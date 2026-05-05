@@ -4,6 +4,7 @@ import { collection, doc, setDoc, getDocs } from 'https://www.gstatic.com/fireba
 import { getMotivationalMessage } from './motivation.js';
 import { showWarmup } from './warmup.js';
 import { initSetRows, renderSetRows, readSetDetails, summarizeSets } from './set-rows.js';
+import { startWorkoutTimer, stopWorkoutTimer, restoreWorkoutTimer } from './workout-timer.js';
 
 const storageKey = 'strengthTrackerExercises';
 let workouts = [];
@@ -50,6 +51,40 @@ let coachState = {
   missedExercises: new Set(),
 };
 
+const NOTEBOOK_SESSION_KEY = 'notebookActiveSession';
+
+function persistNotebookSession() {
+  if (!coachState.currentWorkout) { clearNotebookSession(); return; }
+  try {
+    localStorage.setItem(NOTEBOOK_SESSION_KEY, JSON.stringify({
+      currentWorkout:       coachState.currentWorkout,
+      currentSession:       coachState.currentSession,
+      currentExerciseIndex: coachState.currentExerciseIndex,
+      loggedExercises:      Array.from(coachState.loggedExercises),
+      missedExercises:      Array.from(coachState.missedExercises),
+    }));
+  } catch (_) {}
+}
+
+function restoreNotebookSession() {
+  try {
+    const raw = localStorage.getItem(NOTEBOOK_SESSION_KEY);
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    if (!s?.currentWorkout) return false;
+    coachState.currentWorkout       = s.currentWorkout;
+    coachState.currentSession       = s.currentSession;
+    coachState.currentExerciseIndex = s.currentExerciseIndex || 0;
+    coachState.loggedExercises      = new Set(s.loggedExercises || []);
+    coachState.missedExercises      = new Set(s.missedExercises || []);
+    return true;
+  } catch (_) { return false; }
+}
+
+function clearNotebookSession() {
+  localStorage.removeItem(NOTEBOOK_SESSION_KEY);
+}
+
 function showScreen(screenId) {
   document.querySelectorAll('.coach-screen').forEach(s => s.classList.add('hidden'));
   document.getElementById(screenId).classList.remove('hidden');
@@ -68,10 +103,30 @@ function getLastExerciseLogForName(name) {
   return null;
 }
 
+function getRepRange() {
+  try {
+    const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+    const raw = profile.preferredRepRange || profile.hypertrophy?.preferredRepRange || '';
+    const m = raw.match(/(\d+)\s*[-–]\s*(\d+)/);
+    if (m) return { min: parseInt(m[1]), max: parseInt(m[2]) };
+  } catch (_) {}
+  return null;
+}
+
 function getSmartDefaults(exerciseName) {
-  const last = getLastExerciseLogForName(exerciseName);
-  if (last) return { sets: last.sets, reps: last.reps + 1, weight: last.weight };
-  return { sets: 3, reps: 8, weight: 100 };
+  const last  = getLastExerciseLogForName(exerciseName);
+  if (!last) return { sets: 3, reps: 8, weight: 100 };
+
+  const range = getRepRange();
+  if (range) {
+    if (last.reps >= range.max) {
+      return { sets: last.sets, reps: range.min, weight: last.weight + 10 };
+    }
+    if (last.reps < range.min) {
+      return { sets: last.sets, reps: range.min, weight: Math.max(0, last.weight - 5) };
+    }
+  }
+  return { sets: last.sets, reps: last.reps + 1, weight: last.weight };
 }
 
 function renderFavoriteWorkouts() {
@@ -104,6 +159,8 @@ function startFavoriteWorkout(sessionId) {
       loggedExercises: new Set(),
       missedExercises: new Set(),
     };
+    persistNotebookSession();
+    startWorkoutTimer();
     showExerciseSelection();
   });
 }
@@ -117,6 +174,8 @@ function createNewWorkout(workoutName) {
       loggedExercises: new Set(),
       missedExercises: new Set(),
     };
+    persistNotebookSession();
+    startWorkoutTimer();
     showScreen('start-workout-screen');
     document.getElementById('workout-title').textContent = workoutName;
     document.getElementById('exercises-list').innerHTML =
@@ -146,20 +205,68 @@ function renderExercisesSelection() {
     const cls    = isLogged ? 'logged' : isMissed ? 'missed' : '';
 
     return `
-      <div class="exercise-selection-item ${cls}">
+      <div class="exercise-selection-item ${cls}" data-ex-index="${index}">
         <div class="exercise-selection-info">
           <strong>${exercise.name}</strong>
-          <span>${exercise.sets}x${exercise.reps} @ ${exercise.weight} lbs</span>
+          <span>${exercise.sets}×${exercise.reps} @ ${exercise.weight} lbs</span>
           ${status ? `<span class="status">${status}</span>` : ''}
         </div>
-        <button type="button" class="btn-primary select-exercise" data-index="${index}">
-          ${isLogged ? 'Edit' : 'Log'}
-        </button>
+        <div class="ex-select-actions">
+          ${!isLogged ? `<button type="button" class="secondary-button edit-exercise-target" data-index="${index}" title="Edit targets">Edit</button>` : ''}
+          <button type="button" class="btn-primary select-exercise" data-index="${index}">
+            ${isLogged ? 'Re-log' : 'Log'}
+          </button>
+        </div>
       </div>
     `;
   }).join('');
 
   updateProgress();
+}
+
+function toggleExerciseEditRow(index) {
+  const item = document.querySelector(`.exercise-selection-item[data-ex-index="${index}"]`);
+  if (!item) return;
+
+  const existing = item.querySelector('.ex-inline-edit');
+  if (existing) { existing.remove(); return; }
+
+  // Close any other open inline edits
+  document.querySelectorAll('.ex-inline-edit').forEach(el => el.remove());
+
+  const ex = coachState.currentWorkout.exercises[index];
+  const row = document.createElement('div');
+  row.className = 'ex-inline-edit';
+  row.innerHTML = `
+    <input class="ex-edit-name" type="text" value="${ex.name}" placeholder="Exercise name" />
+    <label>Sets<input class="ex-edit-sets" type="number" min="1" value="${ex.sets}" /></label>
+    <label>Reps<input class="ex-edit-reps" type="number" min="1" value="${ex.reps}" /></label>
+    <label>Weight<input class="ex-edit-weight" type="number" min="0" value="${ex.weight}" /></label>
+    <div class="ex-inline-edit-actions">
+      <button type="button" class="btn-primary ex-edit-save" data-index="${index}">Save</button>
+      <button type="button" class="secondary-button ex-edit-cancel">Cancel</button>
+    </div>
+  `;
+  item.appendChild(row);
+  row.querySelector('.ex-edit-name').focus();
+}
+
+function saveExerciseTargetEdit(index) {
+  const item = document.querySelector(`.exercise-selection-item[data-ex-index="${index}"]`);
+  const row  = item?.querySelector('.ex-inline-edit');
+  if (!row) return;
+
+  const name   = row.querySelector('.ex-edit-name').value.trim();
+  const sets   = parseInt(row.querySelector('.ex-edit-sets').value)   || 1;
+  const reps   = parseInt(row.querySelector('.ex-edit-reps').value)   || 1;
+  const weight = parseFloat(row.querySelector('.ex-edit-weight').value) || 0;
+  if (!name) { row.querySelector('.ex-edit-name').focus(); return; }
+
+  coachState.currentWorkout.exercises[index] = {
+    ...coachState.currentWorkout.exercises[index],
+    name, sets, reps, weight,
+  };
+  renderExercisesSelection();
 }
 
 function updateProgress() {
@@ -214,6 +321,7 @@ function submitExerciseLog() {
 
   coachState.loggedExercises.add(index);
   coachState.missedExercises.delete(index);
+  persistNotebookSession();
 
   const total = coachState.currentWorkout.exercises.length;
   if (coachState.loggedExercises.size === total) showWorkoutComplete();
@@ -223,6 +331,7 @@ function submitExerciseLog() {
 function skipExercise() {
   const index = parseInt(document.getElementById('exercise-log-form').dataset.exerciseIndex);
   coachState.missedExercises.add(index);
+  persistNotebookSession();
   const total = coachState.currentWorkout.exercises.length;
   if (coachState.loggedExercises.size === total) showWorkoutComplete();
   else showExerciseSelection();
@@ -289,6 +398,7 @@ function addMidSessionExercise(saveToWorkout) {
 
   const newEx = { name, sets, reps, weight };
   coachState.currentWorkout.exercises.push(newEx);
+  persistNotebookSession();
 
   if (saveToWorkout && coachState.currentWorkout.id) {
     const idx = workouts.findIndex(w => w.id === coachState.currentWorkout.id);
@@ -305,6 +415,8 @@ function addMidSessionExercise(saveToWorkout) {
 
 async function saveSession() {
   if (coachState.loggedExercises.size === 0) return;
+  clearNotebookSession();
+  stopWorkoutTimer();
 
   const sessionId = coachState.currentWorkout?.id || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const session = {
@@ -349,6 +461,8 @@ function hideSgQuitPanel() {
 async function endEarly() {
   hideSgQuitPanel();
   if (coachState.loggedExercises.size === 0) {
+    clearNotebookSession();
+    stopWorkoutTimer();
     coachState = { currentWorkout: null, currentSession: null, currentExerciseIndex: 0, loggedExercises: new Set(), missedExercises: new Set() };
     showScreen('select-workout-screen');
     return;
@@ -387,6 +501,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('exercises-list').addEventListener('click', e => {
     if (e.target.matches('.select-exercise'))
       logExerciseForIndex(parseInt(e.target.dataset.index));
+    if (e.target.matches('.edit-exercise-target'))
+      toggleExerciseEditRow(parseInt(e.target.dataset.index));
+    if (e.target.matches('.ex-edit-save'))
+      saveExerciseTargetEdit(parseInt(e.target.dataset.index));
+    if (e.target.matches('.ex-edit-cancel'))
+      e.target.closest('.ex-inline-edit').remove();
   });
 
   document.getElementById('add-exercise-btn').addEventListener('click', showAddExercisePanel);
@@ -423,7 +543,12 @@ onAuthStateChanged(auth, async user => {
   currentUser = user;
   if (user) {
     await loadWorkoutsFromFirestore(user.uid);
-    renderFavoriteWorkouts();
-    showScreen('select-workout-screen');
+    if (restoreNotebookSession()) {
+      restoreWorkoutTimer();
+      showExerciseSelection();
+    } else {
+      renderFavoriteWorkouts();
+      showScreen('select-workout-screen');
+    }
   }
 });

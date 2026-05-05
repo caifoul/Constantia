@@ -15,6 +15,7 @@ const editAccountBtn = document.getElementById('edit-account-btn');
 const editProfileBtn = document.getElementById('edit-profile-btn');
 const editHypertrophyBtn = document.getElementById('edit-hypertrophy-btn');
 const editMotivationBtn = document.getElementById('edit-motivation-btn');
+const editTimerBtn = document.getElementById('edit-timer-btn');
 const editWarmupBtn = document.getElementById('edit-warmup-btn');
 const closeModalBtn = document.getElementById('close-modal');
 const cancelEditBtn = document.getElementById('cancel-edit');
@@ -83,6 +84,14 @@ function renderProfile() {
   const styleKey = profile.motivationStyle || 'moderate';
   const styleLabel = MOTIVATION_STYLES[styleKey] || 'Moderate Taunting with Positive Energy';
   motivationInfo.innerHTML = `<p><strong>${styleLabel}</strong></p>`;
+
+  const timerInfo = document.getElementById('timer-info');
+  const timerMins = profile.workoutTimerMinutes;
+  if (timerMins && timerMins !== 'off') {
+    timerInfo.innerHTML = `<p><strong>${timerMins} minutes</strong> — countdown starts when workout begins.</p>`;
+  } else {
+    timerInfo.innerHTML = '<p class="empty-state">No timer set. Set a duration to get a countdown during workouts.</p>';
+  }
 
   const warmupInfo = document.getElementById('warmup-info');
   if (profile.preferredWarmup && profile.preferredWarmup.name) {
@@ -247,6 +256,39 @@ function openEditModal(mode) {
       <p class="coach-meta" style="margin-top:0.75rem;">Controls the tone of messages throughout the app — quit teases, save confirmations, and your dashboard quote.</p>`;
   }
 
+  if (mode === 'timer') {
+    editModalTitle.textContent = 'Workout Timer';
+    const current = profile.workoutTimerMinutes || 'off';
+    const knownMins = ['30', '45', '60', '90', '120'];
+    const isCustom = current !== 'off' && !knownMins.includes(String(current));
+    editFormFields.innerHTML = `
+      <label>Duration
+        <select id="edit-timer-select">
+          <option value="off">Off (no timer)</option>
+          <option value="30">30 minutes</option>
+          <option value="45">45 minutes</option>
+          <option value="60">60 minutes</option>
+          <option value="90">90 minutes</option>
+          <option value="120">2 hours</option>
+          <option value="custom">Custom…</option>
+        </select>
+      </label>
+      <label id="edit-timer-custom-label" style="display:none;">Minutes
+        <input type="number" id="edit-timer-custom" min="1" max="480" placeholder="e.g. 75" />
+      </label>
+      <p class="coach-meta" style="margin-top:0.75rem;">When set, a countdown appears during your workouts. At 10 seconds remaining you'll get a "Pick Your Song!" reminder.</p>`;
+    const sel = document.getElementById('edit-timer-select');
+    sel.value = isCustom ? 'custom' : String(current);
+    if (isCustom) {
+      document.getElementById('edit-timer-custom-label').style.display = '';
+      document.getElementById('edit-timer-custom').value = current;
+    }
+    sel.addEventListener('change', () => {
+      document.getElementById('edit-timer-custom-label').style.display =
+        sel.value === 'custom' ? '' : 'none';
+    });
+  }
+
   if (mode === 'warmup') {
     editModalTitle.textContent = 'Edit Preferred Warmup';
     const pw = profile.preferredWarmup || {};
@@ -288,6 +330,16 @@ async function saveChanges() {
   } else if (currentEditMode === 'motivation') {
     const sel = document.getElementById('edit-motivation-style');
     if (sel) profile.motivationStyle = sel.value;
+  } else if (currentEditMode === 'timer') {
+    const sel = document.getElementById('edit-timer-select');
+    if (sel) {
+      if (sel.value === 'custom') {
+        const custom = document.getElementById('edit-timer-custom')?.value.trim();
+        profile.workoutTimerMinutes = custom || 'off';
+      } else {
+        profile.workoutTimerMinutes = sel.value;
+      }
+    }
   } else if (currentEditMode === 'warmup') {
     const name = document.getElementById('edit-warmup-name').value.trim();
     const stepsRaw = document.getElementById('edit-warmup-steps').value;
@@ -341,6 +393,7 @@ document.addEventListener('DOMContentLoaded', () => {
   editProfileBtn.addEventListener('click', () => openEditModal('profile'));
   editHypertrophyBtn.addEventListener('click', () => openEditModal('hypertrophy'));
   editMotivationBtn.addEventListener('click', () => openEditModal('motivation'));
+  editTimerBtn.addEventListener('click', () => openEditModal('timer'));
   editWarmupBtn.addEventListener('click', () => openEditModal('warmup'));
   closeModalBtn.addEventListener('click', closeModal);
   cancelEditBtn.addEventListener('click', closeModal);

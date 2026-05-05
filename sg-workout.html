@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>S.G. Workout – Strength Tracker</title>
+    <title>Notebook – Strength Tracker</title>
     <link rel="stylesheet" href="styles.css" />
     <style>body { visibility: hidden; }</style>
     <script type="module" src="auth-guard.js"></script>
@@ -13,14 +13,14 @@
       <header class="app-header">
         <div class="header-top">
           <div>
-            <h1>S.G. Workout</h1>
+            <h1>Notebook</h1>
             <p>Guided workouts with smart defaults.</p>
           </div>
           <nav class="nav-links">
             <a href="home.html">Dashboard</a>
             <a href="index.html">Log Workout</a>
             <a href="coach.html">Coach</a>
-            <a href="sg-workout.html">S.G. Workout</a>
+            <a href="sg-workout.html">Notebook</a>
             <a href="favorites.html">Favorites</a>
             <a href="profile.html">Profile</a>
           </nav>
@@ -65,6 +65,8 @@
               <div id="progress-fill" class="progress-fill"></div>
             </div>
           </div>
+
+          <div id="workout-timer-widget"></div>
 
           <div id="exercises-list" class="exercises-coach-list">
             <p class="empty-state">Loading exercises...</p>

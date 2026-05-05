@@ -20,7 +20,7 @@
             <a href="home.html">Dashboard</a>
             <a href="index.html">Log Workout</a>
             <a href="coach.html">Coach</a>
-            <a href="sg-workout.html">S.G. Workout</a>
+            <a href="sg-workout.html">Notebook</a>
             <a href="favorites.html">Favorites</a>
             <a href="profile.html">Profile</a>
           </nav>
@@ -66,6 +66,8 @@
             <p id="active-progress-label" class="coach-progress-label">0 of 0 done</p>
           </div>
 
+          <div id="workout-timer-widget"></div>
+
           <!-- Exercise heading -->
           <p class="coach-label" style="margin-top:1.5rem;">NOW UP</p>
           <h2 id="active-exercise-name" class="coach-exercise-name">Exercise</h2>
@@ -86,6 +88,8 @@
             <button id="active-machine-taken-btn" class="secondary-button">Machine Taken / Skip</button>
           </div>
 
+          <button type="button" id="undo-last-btn" class="secondary-button hidden">↩ Undo Last</button>
+
           <!-- Machine taken panel (inline) -->
           <div id="machine-taken-panel" class="coach-panel hidden">
             <p class="coach-panel-title">Can't do this one right now?</p>
@@ -95,6 +99,23 @@
               <button id="cancel-machine-taken-btn" class="secondary-button">Back</button>
             </div>
           </div>
+
+          <!-- Add exercise panel -->
+          <div id="coach-add-panel" class="coach-panel hidden">
+            <p class="coach-panel-title">Add Exercise to Queue</p>
+            <label>Exercise Name<input type="text" id="coach-add-name" placeholder="e.g. Cable Row" autocomplete="off" /></label>
+            <div class="row" style="margin-top:0.75rem;">
+              <label>Sets<input type="number" id="coach-add-sets" min="1" value="3" /></label>
+              <label>Reps<input type="number" id="coach-add-reps" min="1" value="8" /></label>
+              <label>Weight (lbs)<input type="number" id="coach-add-weight" min="0" value="100" /></label>
+            </div>
+            <div class="mt-footer" style="margin-top:0.75rem;">
+              <button type="button" id="coach-add-confirm-btn" class="btn-primary">Add to Queue</button>
+              <button type="button" id="coach-add-cancel-btn" class="secondary-button">Cancel</button>
+            </div>
+          </div>
+
+          <button type="button" id="coach-add-exercise-btn" class="secondary-button view-skipped-btn">+ Add Exercise</button>
 
           <!-- Skipped exercises panel -->
           <div id="skipped-panel" class="coach-panel hidden">

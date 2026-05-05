@@ -1,6 +1,7 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { collection, doc, setDoc, getDocs, deleteDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initSetRows, renderSetRows, readSetDetails, summarizeSets } from './set-rows.js';
 
 const storageKey = 'strengthTrackerExercises';
 const favoritesList = document.getElementById('favorites-list');
@@ -96,16 +97,132 @@ function renderFavorites() {
 
 // ── Edit panel ────────────────────────────────────────────────────
 function buildExerciseRow(ex) {
+  const sets       = ex?.sets       ?? 3;
+  const reps       = ex?.reps       ?? 8;
+  const weight     = ex?.weight     ?? 100;
+  const notes      = ex?.notes      ?? '';
+  const setDetails = ex?.setDetails ?? [];
+
   const div = document.createElement('div');
-  div.className = 'fav-edit-row';
+  div.className  = 'fav-edit-row';
+  div.draggable  = true;
+
   div.innerHTML = `
-    <input class="fav-edit-name" type="text" value="${ex?.name || ''}" placeholder="Exercise name" />
-    <label>Sets<input class="fav-edit-sets" type="number" min="1" value="${ex?.sets ?? 3}" /></label>
-    <label>Reps<input class="fav-edit-reps" type="number" min="1" value="${ex?.reps ?? 8}" /></label>
-    <label>Weight<input class="fav-edit-weight" type="number" min="0" value="${ex?.weight ?? 100}" /></label>
-    <button type="button" class="fav-delete-ex-btn" data-action="remove-ex" title="Remove exercise">✕</button>
+    <div class="fav-edit-row-header">
+      <span class="fav-drag-handle" title="Drag to reorder">⠿</span>
+      <input class="fav-edit-name" type="text" value="${ex?.name || ''}" placeholder="Exercise name" />
+      <button type="button" class="fav-delete-ex-btn" data-action="remove-ex" title="Remove">✕</button>
+    </div>
+    <div class="fav-edit-row-body">
+      <div class="row">
+        <label>Sets<input class="fav-edit-sets" type="number" min="1" value="${sets}" /></label>
+      </div>
+      <div class="sets-detail-list fav-sets-detail"></div>
+      <label>Notes<textarea class="fav-edit-notes" rows="2" placeholder="Optional…">${notes}</textarea></label>
+    </div>
   `;
+
+  // Initialise per-set rows
+  const setsEl = div.querySelector('.fav-sets-detail');
+  if (setDetails.length) {
+    renderSetRows(setsEl, sets, reps, weight, setDetails);
+  } else {
+    initSetRows(setsEl, sets, reps, weight);
+  }
+
+  // Keep rows in sync when sets count changes
+  div.querySelector('.fav-edit-sets').addEventListener('input', () => {
+    const n        = Math.max(1, parseInt(div.querySelector('.fav-edit-sets').value) || 1);
+    const existing = readSetDetails(setsEl);
+    const last     = existing[existing.length - 1];
+    renderSetRows(setsEl, n, last?.reps ?? reps, last?.weight ?? weight, existing);
+  });
+
   return div;
+}
+
+function initEditDragAndDrop(container) {
+  let dragSrc = null;
+  let touchSrc = null;
+  let touchStartY = 0;
+  let touchDragging = false;
+
+  function getRows() { return Array.from(container.querySelectorAll('.fav-edit-row')); }
+
+  function attachRow(row) {
+    row.addEventListener('dragstart', e => {
+      dragSrc = row;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => row.classList.add('dragging'), 0);
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      getRows().forEach(r => r.classList.remove('drag-over'));
+    });
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      getRows().forEach(r => r.classList.remove('drag-over'));
+      row.classList.add('drag-over');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!dragSrc || dragSrc === row) return;
+      const rows = getRows();
+      const srcIdx  = rows.indexOf(dragSrc);
+      const dropIdx = rows.indexOf(row);
+      if (srcIdx < dropIdx) row.after(dragSrc);
+      else row.before(dragSrc);
+      getRows().forEach(r => r.classList.remove('drag-over'));
+      dragSrc = null;
+    });
+
+    const handle = row.querySelector('.fav-drag-handle') || row;
+    handle.addEventListener('touchstart', e => {
+      touchSrc = row;
+      touchStartY = e.touches[0].clientY;
+      touchDragging = false;
+    }, { passive: true });
+  }
+
+  container.addEventListener('touchmove', e => {
+    if (!touchSrc) return;
+    if (!touchDragging && Math.abs(e.touches[0].clientY - touchStartY) > 8) {
+      touchDragging = true;
+      touchSrc.classList.add('dragging');
+    }
+    if (!touchDragging) return;
+    e.preventDefault();
+    touchSrc.style.visibility = 'hidden';
+    const over = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.fav-edit-row');
+    touchSrc.style.visibility = '';
+    getRows().forEach(r => r.classList.remove('drag-over'));
+    if (over && over !== touchSrc) over.classList.add('drag-over');
+  }, { passive: false });
+
+  container.addEventListener('touchend', () => {
+    if (!touchSrc) return;
+    touchSrc.classList.remove('dragging');
+    if (touchDragging) {
+      const over = container.querySelector('.fav-edit-row.drag-over');
+      if (over && over !== touchSrc) {
+        const rows = getRows();
+        if (rows.indexOf(touchSrc) < rows.indexOf(over)) over.after(touchSrc);
+        else over.before(touchSrc);
+      }
+      getRows().forEach(r => r.classList.remove('drag-over'));
+    }
+    touchSrc = null;
+    touchDragging = false;
+  });
+
+  // Wire existing rows and observe new ones
+  getRows().forEach(attachRow);
+  new MutationObserver(mutations => {
+    mutations.forEach(m => m.addedNodes.forEach(n => {
+      if (n.classList?.contains('fav-edit-row')) attachRow(n);
+    }));
+  }).observe(container, { childList: true });
 }
 
 function openEditPanel(sessionId) {
@@ -142,16 +259,20 @@ function openEditPanel(sessionId) {
   panel.appendChild(exContainer);
   panel.appendChild(footer);
   article.appendChild(panel);
+  initEditDragAndDrop(exContainer);
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function readEditPanel(panel) {
-  return Array.from(panel.querySelectorAll('.fav-edit-row')).map(row => ({
-    name:   row.querySelector('.fav-edit-name').value.trim(),
-    sets:   parseInt(row.querySelector('.fav-edit-sets').value)   || 1,
-    reps:   parseInt(row.querySelector('.fav-edit-reps').value)   || 1,
-    weight: parseFloat(row.querySelector('.fav-edit-weight').value) || 0,
-  })).filter(ex => ex.name);
+  return Array.from(panel.querySelectorAll('.fav-edit-row')).map(row => {
+    const name       = row.querySelector('.fav-edit-name').value.trim();
+    const sets       = parseInt(row.querySelector('.fav-edit-sets').value) || 1;
+    const setsEl     = row.querySelector('.fav-sets-detail');
+    const setDetails = readSetDetails(setsEl);
+    const { reps, weight } = summarizeSets(setDetails);
+    const notes      = row.querySelector('.fav-edit-notes')?.value.trim() || '';
+    return { name, sets, reps, weight, setDetails, notes };
+  }).filter(ex => ex.name);
 }
 
 async function saveEdit(sessionId) {
@@ -167,13 +288,14 @@ async function saveEdit(sessionId) {
     return {
       ...w,
       exercises: exercises.map((ex, i) => ({
-        id: original.exercises[i]?.id || `exercise-${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`,
-        name:     ex.name,
-        sets:     ex.sets,
-        reps:     ex.reps,
-        weight:   ex.weight,
-        notes:    original.exercises[i]?.notes    || '',
-        favorite: original.exercises[i]?.favorite || false,
+        id:         original.exercises[i]?.id || `exercise-${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`,
+        name:       ex.name,
+        sets:       ex.sets,
+        reps:       ex.reps,
+        weight:     ex.weight,
+        setDetails: ex.setDetails,
+        notes:      ex.notes,
+        favorite:   original.exercises[i]?.favorite || false,
       })),
     };
   });
