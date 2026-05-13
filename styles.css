@@ -1953,6 +1953,18 @@ legend {
   animation: fadeIn 0.15s ease;
 }
 
+.ex-edit-name-wrap {
+  grid-column: 1 / -1;
+  position: relative;
+}
+
+.ex-edit-name-wrap .ex-edit-name {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
 .ex-inline-edit .ex-edit-name {
   grid-column: 1 / -1;
   padding: 0.4rem 0.6rem;
@@ -2097,7 +2109,11 @@ legend {
   display: flex;
   justify-content: center;
   margin-bottom: 0.75rem;
-  min-height: 2.5rem;
+}
+
+#workout-timer-widget:empty {
+  display: none;
+  margin-bottom: 0;
 }
 
 .timer-display {
@@ -2169,6 +2185,68 @@ legend {
   color: var(--text-dim);
   margin: 1rem 0 0;
   letter-spacing: 0.05em;
+}
+
+/* ── Regression questionnaire modal ─────────────────────────────── */
+.regression-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+  padding: 1rem;
+}
+
+.regression-modal {
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 34, 102, 0.4);
+  border-radius: 20px;
+  padding: 1.75rem;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 0 24px rgba(255, 34, 102, 0.25), 0 8px 32px rgba(0,0,0,0.6);
+}
+
+.regression-modal h3 {
+  margin: 0 0 0.4rem;
+  color: var(--danger);
+  text-shadow: 0 0 12px rgba(255, 34, 102, 0.5);
+}
+
+.regression-sub {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin: 0 0 1.25rem;
+}
+
+.regression-options {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.regression-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  font-size: 0.93rem;
+  font-family: inherit;
+  font-weight: 400;
+  box-shadow: none;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.regression-btn:hover {
+  border-color: var(--border-bright);
+  background: rgba(204, 0, 255, 0.1);
+  transform: translateY(-1px);
+  box-shadow: var(--neon-glow-sm);
 }
 
 /* ── 7-Day Progression list ──────────────────────────────────────── */

@@ -1,10 +1,11 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { collection, doc, setDoc, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { getMotivationalMessage } from './motivation.js';
+import { getMotivationalMessage, getMotivationStyle } from './motivation.js';
 import { showWarmup } from './warmup.js';
 import { initSetRows, renderSetRows, readSetDetails, summarizeSets } from './set-rows.js';
 import { startWorkoutTimer, stopWorkoutTimer, restoreWorkoutTimer } from './workout-timer.js';
+import { attachAutocomplete } from './exercise-autocomplete.js';
 
 const storageKey = 'strengthTrackerExercises';
 let workouts = [];
@@ -238,7 +239,7 @@ function toggleExerciseEditRow(index) {
   const row = document.createElement('div');
   row.className = 'ex-inline-edit';
   row.innerHTML = `
-    <input class="ex-edit-name" type="text" value="${ex.name}" placeholder="Exercise name" />
+    <div class="ex-edit-name-wrap"><input class="ex-edit-name" type="text" value="${ex.name}" placeholder="Exercise name" autocomplete="off" /></div>
     <label>Sets<input class="ex-edit-sets" type="number" min="1" value="${ex.sets}" /></label>
     <label>Reps<input class="ex-edit-reps" type="number" min="1" value="${ex.reps}" /></label>
     <label>Weight<input class="ex-edit-weight" type="number" min="0" value="${ex.weight}" /></label>
@@ -248,7 +249,9 @@ function toggleExerciseEditRow(index) {
     </div>
   `;
   item.appendChild(row);
-  row.querySelector('.ex-edit-name').focus();
+  const nameInput = row.querySelector('.ex-edit-name');
+  attachAutocomplete(nameInput, () => {});
+  nameInput.focus();
 }
 
 function saveExerciseTargetEdit(index) {
@@ -299,6 +302,38 @@ function logExerciseForIndex(index) {
   showScreen('log-exercise-screen');
 }
 
+function getOtherRegressionLabel() {
+  switch (getMotivationStyle()) {
+    case 'harsh':    return "I'm just a wimp who didn't push hard enough";
+    case 'sergeant': return "Mission fell short. Not enough effort today.";
+    case 'positive': return "I was listening to my body and being safe";
+    default:         return "Just had a rough day";
+  }
+}
+
+function showRegressionModal(onSelect) {
+  const overlay = document.createElement('div');
+  overlay.className = 'regression-overlay';
+  overlay.innerHTML = `
+    <div class="regression-modal">
+      <h3>Why Did You Go Down?</h3>
+      <p class="regression-sub">Your reps or weight dropped since last time.</p>
+      <div class="regression-options">
+        <button class="regression-btn" data-reason="range_of_motion">Better range of motion / form</button>
+        <button class="regression-btn" data-reason="poor_recovery">Poor recovery from last session</button>
+        <button class="regression-btn" data-reason="other">${getOtherRegressionLabel()}</button>
+      </div>
+    </div>
+  `;
+  overlay.addEventListener('click', e => {
+    const btn = e.target.closest('.regression-btn');
+    if (!btn) return;
+    overlay.remove();
+    onSelect(btn.dataset.reason);
+  });
+  document.body.appendChild(overlay);
+}
+
 function submitExerciseLog() {
   const form       = document.getElementById('exercise-log-form');
   const index      = parseInt(form.dataset.exerciseIndex);
@@ -313,19 +348,31 @@ function submitExerciseLog() {
   const { reps, weight } = summarizeSets(setDetails);
   const exercise = coachState.currentWorkout.exercises[index];
   const notes    = document.getElementById('log-notes').value.trim();
-  const entry    = { exerciseIndex: index, name: exercise.name, sets, reps, weight, setDetails, notes, timestamp: Date.now() };
 
-  const existingIdx = coachState.currentSession.exercises.findIndex(ex => ex.exerciseIndex === index);
-  if (existingIdx !== -1) coachState.currentSession.exercises[existingIdx] = entry;
-  else coachState.currentSession.exercises.push(entry);
+  const doLog = (regressionReason) => {
+    const entry = {
+      exerciseIndex: index, name: exercise.name, sets, reps, weight, setDetails, notes, timestamp: Date.now(),
+      ...(regressionReason ? { regressionReason } : {}),
+    };
+    const existingIdx = coachState.currentSession.exercises.findIndex(ex => ex.exerciseIndex === index);
+    if (existingIdx !== -1) coachState.currentSession.exercises[existingIdx] = entry;
+    else coachState.currentSession.exercises.push(entry);
 
-  coachState.loggedExercises.add(index);
-  coachState.missedExercises.delete(index);
-  persistNotebookSession();
+    coachState.loggedExercises.add(index);
+    coachState.missedExercises.delete(index);
+    persistNotebookSession();
 
-  const total = coachState.currentWorkout.exercises.length;
-  if (coachState.loggedExercises.size === total) showWorkoutComplete();
-  else showExerciseSelection();
+    const total = coachState.currentWorkout.exercises.length;
+    if (coachState.loggedExercises.size === total) showWorkoutComplete();
+    else showExerciseSelection();
+  };
+
+  const last = getLastExerciseLogForName(exercise.name);
+  if (last && (weight < last.weight || reps < last.reps)) {
+    showRegressionModal(doLog);
+  } else {
+    doLog(null);
+  }
 }
 
 function skipExercise() {
@@ -419,17 +466,37 @@ async function saveSession() {
   stopWorkoutTimer();
 
   const sessionId = coachState.currentWorkout?.id || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  // Preserve original exercise order; update reps/weight for logged ones;
+  // keep skipped exercises so they aren't removed from the template.
+  const originalExs = coachState.currentWorkout.exercises || [];
+  const originalLength = originalExs.length;
+  const exercises = originalExs.map((orig, i) => {
+    const logged = coachState.currentSession.exercises.find(ex => ex.exerciseIndex === i);
+    if (logged) {
+      return {
+        id: `exercise-${logged.timestamp}-${Math.random().toString(36).slice(2)}`,
+        name: logged.name, sets: logged.sets, reps: logged.reps, weight: logged.weight,
+        setDetails: logged.setDetails, notes: logged.notes || '', favorite: false,
+      };
+    }
+    return { ...orig, id: orig.id || `exercise-${Date.now()}-${Math.random().toString(36).slice(2)}` };
+  });
+  // Append any mid-session added exercises that were actually logged
+  coachState.currentSession.exercises
+    .filter(ex => ex.exerciseIndex >= originalLength)
+    .forEach(ex => exercises.push({
+      id: `exercise-${ex.timestamp}-${Math.random().toString(36).slice(2)}`,
+      name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight,
+      setDetails: ex.setDetails, notes: ex.notes || '', favorite: false,
+    }));
+
   const session = {
     id: sessionId,
     name: coachState.currentSession.workoutName,
     favorite: coachState.currentWorkout?.favorite || false,
     timestamp: Date.now(),
-    exercises: coachState.currentSession.exercises.map(ex => ({
-      id: `exercise-${ex.timestamp}-${Math.random().toString(36).slice(2)}`,
-      name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight,
-      setDetails: ex.setDetails,
-      notes: ex.notes || '', favorite: false,
-    })),
+    exercises,
   };
 
   loadWorkouts();
@@ -478,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
       const range   = profile.preferredRepRange || profile.hypertrophy?.preferredRepRange;
-      if (range) repHint.textContent = `Keep reps in your preferred range: ${range}`;
+      if (range) repHint.textContent = `Only log reps in your desired range of motion (target: ${range}).`;
     } catch (_) {}
   }
 
@@ -494,7 +561,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('back-to-select').addEventListener('click', () => {
+    if (coachState.currentWorkout && (coachState.loggedExercises.size > 0 || coachState.currentSession?.exercises?.length > 0)) {
+      if (!confirm('Leave this workout? Any unsaved progress will be lost.')) return;
+    }
     coachState = { currentWorkout: null, currentSession: null, currentExerciseIndex: 0, loggedExercises: new Set(), missedExercises: new Set() };
+    clearNotebookSession();
+    stopWorkoutTimer();
     showScreen('select-workout-screen');
   });
 
@@ -513,6 +585,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('cancel-add-exercise-btn').addEventListener('click', hideAddExercisePanel);
   document.getElementById('add-session-only-btn').addEventListener('click', () => addMidSessionExercise(false));
   document.getElementById('add-and-save-btn').addEventListener('click', () => addMidSessionExercise(true));
+  attachAutocomplete(document.getElementById('add-ex-name'), name => {
+    const def = getSmartDefaults(name);
+    document.getElementById('add-ex-sets').value   = def.sets;
+    document.getElementById('add-ex-reps').value   = def.reps;
+    document.getElementById('add-ex-weight').value = def.weight;
+  });
 
   document.getElementById('log-sets').addEventListener('input', () => {
     const sets = Math.max(1, parseInt(document.getElementById('log-sets').value) || 1);
@@ -536,6 +614,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sg-end-early-btn').addEventListener('click', showSgQuitPanel);
   document.getElementById('sg-quit-cancel-btn').addEventListener('click', hideSgQuitPanel);
   document.getElementById('sg-quit-confirm-btn').addEventListener('click', endEarly);
+});
+
+// ── Guard browser navigation during active workout ────────────────
+window.addEventListener('beforeunload', e => {
+  if (coachState.currentWorkout && coachState.loggedExercises.size > 0) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
 });
 
 // ── Auth ──────────────────────────────────────────────────────────

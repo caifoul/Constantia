@@ -1,10 +1,11 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { collection, doc, setDoc, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { getMotivationalMessage } from './motivation.js';
+import { getMotivationalMessage, getMotivationStyle } from './motivation.js';
 import { showWarmup } from './warmup.js';
 import { initSetRows, renderSetRows, readSetDetails, summarizeSets } from './set-rows.js';
 import { startWorkoutTimer, stopWorkoutTimer, restoreWorkoutTimer } from './workout-timer.js';
+import { attachAutocomplete } from './exercise-autocomplete.js';
 
 // ── Exercise alternatives ─────────────────────────────────────────
 const ALTERNATIVES = {
@@ -347,6 +348,45 @@ function showMachineTaken() {
   panel.classList.remove('hidden');
 }
 
+// ── Regression questionnaire ──────────────────────────────────────
+function getOtherRegressionLabel() {
+  switch (getMotivationStyle()) {
+    case 'harsh':    return "I'm just a wimp who didn't push hard enough";
+    case 'sergeant': return "Mission fell short. Not enough effort today.";
+    case 'positive': return "I was listening to my body and being safe";
+    default:         return "Just had a rough day";
+  }
+}
+
+function showRegressionModal(onSelect) {
+  const overlay = document.createElement('div');
+  overlay.className = 'regression-overlay';
+  overlay.innerHTML = `
+    <div class="regression-modal">
+      <h3>Why Did You Go Down?</h3>
+      <p class="regression-sub">Your reps or weight dropped since last time.</p>
+      <div class="regression-options">
+        <button class="regression-btn" data-reason="range_of_motion">Better range of motion / form</button>
+        <button class="regression-btn" data-reason="poor_recovery">Poor recovery from last session</button>
+        <button class="regression-btn" data-reason="other">${getOtherRegressionLabel()}</button>
+      </div>
+    </div>
+  `;
+  overlay.addEventListener('click', e => {
+    const btn = e.target.closest('.regression-btn');
+    if (!btn) return;
+    overlay.remove();
+    onSelect(btn.dataset.reason);
+  });
+  document.body.appendChild(overlay);
+}
+
+function isRegression(exerciseName, loggedReps, loggedWeight) {
+  const last = getLastLog(exerciseName);
+  if (!last) return false;
+  return loggedWeight < last.weight || loggedReps < last.reps;
+}
+
 // ── Log exercise ──────────────────────────────────────────────────
 function logCurrentExercise() {
   const sets       = parseInt(qs('active-sets').value);
@@ -360,27 +400,31 @@ function logCurrentExercise() {
 
   const { reps, weight } = summarizeSets(setDetails);
   const ex = state.exerciseQueue[state.currentIndex];
-  state.logged.push({
-    id: `exercise-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    name: ex.name,
-    sets, reps, weight, setDetails, notes,
-    favorite: false,
-    _queueIndex: state.currentIndex,
-  });
-  persistCoachSession();
 
-  // Find next un-done exercise
-  const next = state.exerciseQueue.findIndex(
-    (_, i) => i > state.currentIndex &&
-      !state.logged.some(l => l._queueIndex === i) &&
-      !state.skipped.has(i)
-  );
+  const doLog = (regressionReason) => {
+    state.logged.push({
+      id: `exercise-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: ex.name,
+      sets, reps, weight, setDetails, notes,
+      favorite: false,
+      _queueIndex: state.currentIndex,
+      ...(regressionReason ? { regressionReason } : {}),
+    });
+    persistCoachSession();
 
-  if (next === -1) {
-    // No more ahead — check for skipped or finish
-    showComplete();
+    const next = state.exerciseQueue.findIndex(
+      (_, i) => i > state.currentIndex &&
+        !state.logged.some(l => l._queueIndex === i) &&
+        !state.skipped.has(i)
+    );
+    if (next === -1) showComplete();
+    else showExercise(next);
+  };
+
+  if (isRegression(ex.name, reps, weight)) {
+    showRegressionModal(doLog);
   } else {
-    showExercise(next);
+    doLog(null);
   }
 }
 
@@ -562,12 +606,29 @@ async function saveAndEnd() {
   stopWorkoutTimer();
 
   const sessionId = state.currentWorkout.id || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  // Preserve original exercise order; update reps/weight for logged ones;
+  // keep skipped exercises so they aren't removed from the template.
+  const originalLength = state.currentWorkout.exercises.length;
+  const exercises = state.currentWorkout.exercises.map((orig, i) => {
+    const logged = state.logged.find(l => l._queueIndex === i);
+    if (logged) {
+      const { _queueIndex, ...data } = logged;
+      return data;
+    }
+    return { ...orig, id: orig.id || `exercise-${Date.now()}-${Math.random().toString(36).slice(2)}` };
+  });
+  // Append any mid-session added exercises that were actually logged
+  state.logged
+    .filter(l => l._queueIndex >= originalLength)
+    .forEach(l => { const { _queueIndex, ...data } = l; exercises.push(data); });
+
   const session = {
     id: sessionId,
     name: state.currentWorkout.name,
     favorite: state.currentWorkout.favorite || false,
     timestamp: Date.now(),
-    exercises: state.logged.map(({ _queueIndex, ...ex }) => ex),
+    exercises,
   };
 
   try {
@@ -647,6 +708,12 @@ document.addEventListener('DOMContentLoaded', () => {
   qs('coach-add-cancel-btn').addEventListener('click', hideCoachAddPanel);
   qs('coach-add-confirm-btn').addEventListener('click', addExerciseToQueue);
   qs('coach-add-name').addEventListener('keydown', e => { if (e.key === 'Enter') addExerciseToQueue(); });
+  attachAutocomplete(qs('coach-add-name'), name => {
+    const def = getSmartDefault(name);
+    qs('coach-add-sets').value   = def.sets;
+    qs('coach-add-reps').value   = def.reps;
+    qs('coach-add-weight').value = def.weight;
+  });
 
   // Skipped panel
   qs('view-skipped-btn').addEventListener('click', toggleSkippedPanel);
@@ -670,6 +737,14 @@ document.addEventListener('DOMContentLoaded', () => {
       showExercise(idx);
     }
   });
+});
+
+// ── Guard browser navigation during active workout ────────────────
+window.addEventListener('beforeunload', e => {
+  if (state.currentWorkout && state.logged.length > 0) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
 });
 
 // ── Auth ──────────────────────────────────────────────────────────
