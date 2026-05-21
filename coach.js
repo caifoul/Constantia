@@ -4,7 +4,7 @@ import { collection, doc, setDoc, getDocs } from 'https://www.gstatic.com/fireba
 import { getMotivationalMessage, getMotivationStyle } from './motivation.js';
 import { showWarmup } from './warmup.js';
 import { initSetRows, renderSetRows, readSetDetails, summarizeSets } from './set-rows.js';
-import { startWorkoutTimer, stopWorkoutTimer, restoreWorkoutTimer } from './workout-timer.js';
+import { startRestTimer, stopRestTimer, restoreRestTimer } from './workout-timer.js';
 import { attachAutocomplete } from './exercise-autocomplete.js';
 
 // ── Exercise alternatives ─────────────────────────────────────────
@@ -239,7 +239,6 @@ function startWorkout(workoutId) {
     state.logged         = [];
     state.skipped        = new Set();
     persistCoachSession();
-    startWorkoutTimer();
     showExercise(0);
   });
 }
@@ -384,11 +383,14 @@ function showRegressionModal(onSelect) {
 function isRegression(exerciseName, loggedReps, loggedWeight) {
   const last = getLastLog(exerciseName);
   if (!last) return false;
+  // Weight increase = progress even if reps dropped (e.g. 8@130 → 4@140)
+  if (loggedWeight > last.weight) return false;
   return loggedWeight < last.weight || loggedReps < last.reps;
 }
 
 // ── Log exercise ──────────────────────────────────────────────────
 function logCurrentExercise() {
+  stopRestTimer(); // clear any running rest countdown
   const sets       = parseInt(qs('active-sets').value);
   const setDetails = readSetDetails(qs('active-sets-detail'));
   const notes      = qs('active-notes').value.trim();
@@ -418,7 +420,7 @@ function logCurrentExercise() {
         !state.skipped.has(i)
     );
     if (next === -1) showComplete();
-    else showExercise(next);
+    else { startRestTimer(); showExercise(next); }
   };
 
   if (isRegression(ex.name, reps, weight)) {
@@ -550,7 +552,7 @@ async function endEarly() {
   hideQuitPanel();
   if (state.logged.length === 0) {
     clearCoachSession();
-    stopWorkoutTimer();
+    stopRestTimer();
     state.currentWorkout = null;
     state.exerciseQueue  = [];
     state.logged         = [];
@@ -561,6 +563,18 @@ async function endEarly() {
   }
   await saveAndEnd();
   location.reload();
+}
+
+async function discardAndExit() {
+  hideQuitPanel();
+  clearCoachSession();
+  stopRestTimer();
+  state.currentWorkout = null;
+  state.exerciseQueue  = [];
+  state.logged         = [];
+  state.skipped        = new Set();
+  await loadAllWorkouts();
+  renderHome();
 }
 
 // ── Complete screen ───────────────────────────────────────────────
@@ -603,7 +617,7 @@ function showComplete() {
 async function saveAndEnd() {
   if (!state.logged.length) return;
   clearCoachSession();
-  stopWorkoutTimer();
+  stopRestTimer();
 
   const sessionId = state.currentWorkout.id || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -694,6 +708,7 @@ document.addEventListener('DOMContentLoaded', () => {
   qs('end-early-btn').addEventListener('click', showQuitPanel);
   qs('quit-cancel-btn').addEventListener('click', hideQuitPanel);
   qs('quit-confirm-btn').addEventListener('click', endEarly);
+  qs('quit-discard-btn').addEventListener('click', discardAndExit);
 
   // Machine taken panel
   qs('machine-taken-panel').addEventListener('click', e => {
@@ -753,7 +768,7 @@ onAuthStateChanged(auth, async user => {
   if (user) {
     await loadAllWorkouts();
     if (restoreCoachSession()) {
-      restoreWorkoutTimer();
+      restoreRestTimer();
       showExercise(state.currentIndex);
     } else {
       renderHome();

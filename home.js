@@ -21,6 +21,12 @@ const QUOTES = [
   { quote: "If you can imagine it, you can achieve it. If you can dream it, you can become it.", author: "William Arthur Ward" },
 ];
 
+function fmtEx(ex) {
+  if (!ex) return '—';
+  const s = Number(ex.sets) || 1, r = Number(ex.reps) || 0, w = Number(ex.weight) || 0;
+  return w > 0 ? `${s}×${r} @ ${w} lbs` : `${s}×${r}`;
+}
+
 function calculateProgression(sessions) {
   const now = Date.now();
   const sevenDaysAgo    = now - 7  * 24 * 60 * 60 * 1000;
@@ -39,7 +45,7 @@ function calculateProgression(sessions) {
   );
 
   if (!thisWeek.length) {
-    progressionList.innerHTML = '<p>No workouts logged in the last 7 days.</p>';
+    progressionList.innerHTML = '<p class="prog-empty">No workouts logged in the last 7 days.</p>';
     return;
   }
 
@@ -53,48 +59,54 @@ function calculateProgression(sessions) {
   const lastMap = groupByName(lastWeek);
 
   const rows = Object.entries(thisMap).map(([name, entries]) => {
-    entries.sort((a, b) => a.timestamp - b.timestamp);
-    const prevEntries = (lastMap[name] || []).sort((a, b) => a.timestamp - b.timestamp);
+    entries.sort((a, b) => b.timestamp - a.timestamp); // most recent first
+    const prevEntries = (lastMap[name] || []).sort((a, b) => b.timestamp - a.timestamp);
 
-    const thisFirstW = Number(entries[0].weight) || 0;
-    const thisLastW  = Number(entries[entries.length - 1].weight) || 0;
-    const prevLastW  = prevEntries.length
-      ? Number(prevEntries[prevEntries.length - 1].weight) || 0
-      : 0;
+    const cur  = entries[0];
+    const prev = prevEntries[0] || null;
 
-    // Weight went up within this week (multiple sessions)
-    if (entries.length > 1 && thisLastW > thisFirstW) {
-      const diff = Math.round((thisLastW - thisFirstW) * 100) / 100;
-      return { name, label: `+${diff} lbs`, cls: 'prog-weight' };
+    const curW  = Number(cur.weight)  || 0;
+    const prevW = prev ? (Number(prev.weight) || 0) : 0;
+    const curR  = (Number(cur.sets) || 1) * (Number(cur.reps) || 0);
+    const prevR = prev ? (Number(prev.sets) || 1) * (Number(prev.reps) || 0) : 0;
+
+    let delta = '', cls = 'prog-same';
+    if (!prev) {
+      delta = 'new this week';
+      cls = 'prog-new';
+    } else if (curW > prevW) {
+      delta = `+${Math.round((curW - prevW) * 100) / 100} lbs`;
+      cls = 'prog-weight';
+    } else if (curW < prevW) {
+      delta = `${Math.round((curW - prevW) * 100) / 100} lbs`;
+      cls = 'prog-down';
+    } else if (curR > prevR) {
+      delta = `+${curR - prevR} reps total`;
+      cls = 'prog-up';
+    } else if (curR < prevR) {
+      delta = `${curR - prevR} reps total`;
+      cls = 'prog-down';
+    } else {
+      delta = 'no change';
+      cls = 'prog-same';
     }
 
-    // Weight went up vs last week's last session
-    if (prevLastW > 0 && thisLastW > prevLastW) {
-      const diff = Math.round((thisLastW - prevLastW) * 100) / 100;
-      return { name, label: `+${diff} lbs`, cls: 'prog-weight' };
-    }
-
-    // Rep delta vs previous week
-    const thisReps = entries.reduce((s, e) => s + (Number(e.sets) || 0) * (Number(e.reps) || 0), 0);
-    const prevReps = prevEntries.reduce((s, e) => s + (Number(e.sets) || 0) * (Number(e.reps) || 0), 0);
-
-    if (!prevReps) {
-      return { name, label: `${thisReps} reps`, cls: 'prog-new' };
-    }
-    const diff = thisReps - prevReps;
-    return {
-      name,
-      label: diff >= 0 ? `+${diff} reps` : `${diff} reps`,
-      cls: diff >= 0 ? 'prog-up' : 'prog-down',
-    };
+    return { name, cur, prev, delta, cls };
   });
 
-  const order = { 'prog-weight': 0, 'prog-up': 1, 'prog-new': 2, 'prog-down': 3 };
-  rows.sort((a, b) => (order[a.cls] ?? 4) - (order[b.cls] ?? 4));
+  const order = { 'prog-weight': 0, 'prog-up': 1, 'prog-new': 2, 'prog-same': 3, 'prog-down': 4 };
+  rows.sort((a, b) => (order[a.cls] ?? 5) - (order[b.cls] ?? 5));
 
   progressionList.innerHTML = `<ul class="prog-list">${
-    rows.map(({ name, label, cls }) =>
-      `<li class="prog-item"><span class="prog-name">${name}</span><span class="${cls}">${label}</span></li>`
+    rows.map(({ name, cur, prev, delta, cls }) => `
+      <li class="prog-item">
+        <div class="prog-name">${name}</div>
+        <div class="prog-details">
+          <span class="prog-this-week">${fmtEx(cur)}</span>
+          ${prev ? `<span class="prog-vs">vs</span><span class="prog-last-week">${fmtEx(prev)}</span>` : ''}
+          <span class="${cls} prog-delta">${delta}</span>
+        </div>
+      </li>`
     ).join('')
   }</ul>`;
 }

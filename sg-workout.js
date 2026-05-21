@@ -4,7 +4,7 @@ import { collection, doc, setDoc, getDocs } from 'https://www.gstatic.com/fireba
 import { getMotivationalMessage, getMotivationStyle } from './motivation.js';
 import { showWarmup } from './warmup.js';
 import { initSetRows, renderSetRows, readSetDetails, summarizeSets } from './set-rows.js';
-import { startWorkoutTimer, stopWorkoutTimer, restoreWorkoutTimer } from './workout-timer.js';
+import { startRestTimer, stopRestTimer, restoreRestTimer } from './workout-timer.js';
 import { attachAutocomplete } from './exercise-autocomplete.js';
 
 const storageKey = 'strengthTrackerExercises';
@@ -161,7 +161,6 @@ function startFavoriteWorkout(sessionId) {
       missedExercises: new Set(),
     };
     persistNotebookSession();
-    startWorkoutTimer();
     showExerciseSelection();
   });
 }
@@ -176,7 +175,6 @@ function createNewWorkout(workoutName) {
       missedExercises: new Set(),
     };
     persistNotebookSession();
-    startWorkoutTimer();
     showScreen('start-workout-screen');
     document.getElementById('workout-title').textContent = workoutName;
     document.getElementById('exercises-list').innerHTML =
@@ -205,11 +203,16 @@ function renderExercisesSelection() {
     const status = isLogged ? '✓ Logged' : isMissed ? '◌ Skipped' : '';
     const cls    = isLogged ? 'logged' : isMissed ? 'missed' : '';
 
+    const recentLog = coachState.currentSession?.exercises?.find(ex => ex.exerciseIndex === index);
+    const statLine = recentLog
+      ? `<span class="ex-recent-log">${recentLog.sets}×${recentLog.reps} @ ${recentLog.weight} lbs</span>`
+      : `<span>${exercise.sets}×${exercise.reps} @ ${exercise.weight} lbs</span>`;
+
     return `
       <div class="exercise-selection-item ${cls}" data-ex-index="${index}">
         <div class="exercise-selection-info">
           <strong>${exercise.name}</strong>
-          <span>${exercise.sets}×${exercise.reps} @ ${exercise.weight} lbs</span>
+          ${statLine}
           ${status ? `<span class="status">${status}</span>` : ''}
         </div>
         <div class="ex-select-actions">
@@ -281,6 +284,7 @@ function updateProgress() {
 }
 
 function logExerciseForIndex(index) {
+  stopRestTimer();
   const exercise = coachState.currentWorkout.exercises[index];
   if (!exercise) return;
 
@@ -364,11 +368,11 @@ function submitExerciseLog() {
 
     const total = coachState.currentWorkout.exercises.length;
     if (coachState.loggedExercises.size === total) showWorkoutComplete();
-    else showExerciseSelection();
+    else { startRestTimer(); showExerciseSelection(); }
   };
 
   const last = getLastExerciseLogForName(exercise.name);
-  if (last && (weight < last.weight || reps < last.reps)) {
+  if (last && weight <= last.weight && (weight < last.weight || reps < last.reps)) {
     showRegressionModal(doLog);
   } else {
     doLog(null);
@@ -463,7 +467,7 @@ function addMidSessionExercise(saveToWorkout) {
 async function saveSession() {
   if (coachState.loggedExercises.size === 0) return;
   clearNotebookSession();
-  stopWorkoutTimer();
+  stopRestTimer();
 
   const sessionId = coachState.currentWorkout?.id || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -529,13 +533,21 @@ async function endEarly() {
   hideSgQuitPanel();
   if (coachState.loggedExercises.size === 0) {
     clearNotebookSession();
-    stopWorkoutTimer();
+    stopRestTimer();
     coachState = { currentWorkout: null, currentSession: null, currentExerciseIndex: 0, loggedExercises: new Set(), missedExercises: new Set() };
     showScreen('select-workout-screen');
     return;
   }
   await saveSession();
   location.reload();
+}
+
+function discardAndExit() {
+  hideSgQuitPanel();
+  clearNotebookSession();
+  stopRestTimer();
+  coachState = { currentWorkout: null, currentSession: null, currentExerciseIndex: 0, loggedExercises: new Set(), missedExercises: new Set() };
+  showScreen('select-workout-screen');
 }
 
 // ── Events ────────────────────────────────────────────────────────
@@ -566,7 +578,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     coachState = { currentWorkout: null, currentSession: null, currentExerciseIndex: 0, loggedExercises: new Set(), missedExercises: new Set() };
     clearNotebookSession();
-    stopWorkoutTimer();
+    stopRestTimer();
     showScreen('select-workout-screen');
   });
 
@@ -614,6 +626,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sg-end-early-btn').addEventListener('click', showSgQuitPanel);
   document.getElementById('sg-quit-cancel-btn').addEventListener('click', hideSgQuitPanel);
   document.getElementById('sg-quit-confirm-btn').addEventListener('click', endEarly);
+  document.getElementById('sg-quit-discard-btn').addEventListener('click', discardAndExit);
 });
 
 // ── Guard browser navigation during active workout ────────────────
@@ -630,7 +643,7 @@ onAuthStateChanged(auth, async user => {
   if (user) {
     await loadWorkoutsFromFirestore(user.uid);
     if (restoreNotebookSession()) {
-      restoreWorkoutTimer();
+      restoreRestTimer();
       showExerciseSelection();
     } else {
       renderFavoriteWorkouts();

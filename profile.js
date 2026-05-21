@@ -86,11 +86,13 @@ function renderProfile() {
   motivationInfo.innerHTML = `<p><strong>${styleLabel}</strong></p>`;
 
   const timerInfo = document.getElementById('timer-info');
-  const timerMins = profile.workoutTimerMinutes;
-  if (timerMins && timerMins !== 'off') {
-    timerInfo.innerHTML = `<p><strong>${timerMins} minutes</strong> — countdown starts when workout begins.</p>`;
+  const timerSecs = profile.restTimerSeconds;
+  if (timerSecs && timerSecs !== 'off') {
+    const m = Math.floor(timerSecs / 60), s = timerSecs % 60;
+    const label = m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`;
+    timerInfo.innerHTML = `<p><strong>${label}</strong> rest between sets.</p>`;
   } else {
-    timerInfo.innerHTML = '<p class="empty-state">No timer set. Set a duration to get a countdown during workouts.</p>';
+    timerInfo.innerHTML = '<p class="empty-state">No rest timer set. Set a duration to get a countdown between sets.</p>';
   }
 
   const warmupInfo = document.getElementById('warmup-info');
@@ -257,36 +259,24 @@ function openEditModal(mode) {
   }
 
   if (mode === 'timer') {
-    editModalTitle.textContent = 'Workout Timer';
-    const current = profile.workoutTimerMinutes || 'off';
-    const knownMins = ['30', '45', '60', '90', '120'];
-    const isCustom = current !== 'off' && !knownMins.includes(String(current));
-    editFormFields.innerHTML = `
-      <label>Duration
-        <select id="edit-timer-select">
-          <option value="off">Off (no timer)</option>
-          <option value="30">30 minutes</option>
-          <option value="45">45 minutes</option>
-          <option value="60">60 minutes</option>
-          <option value="90">90 minutes</option>
-          <option value="120">2 hours</option>
-          <option value="custom">Custom…</option>
-        </select>
-      </label>
-      <label id="edit-timer-custom-label" style="display:none;">Minutes
-        <input type="number" id="edit-timer-custom" min="1" max="480" placeholder="e.g. 75" />
-      </label>
-      <p class="coach-meta" style="margin-top:0.75rem;">When set, a countdown appears during your workouts. At 10 seconds remaining you'll get a "Pick Your Song!" reminder.</p>`;
-    const sel = document.getElementById('edit-timer-select');
-    sel.value = isCustom ? 'custom' : String(current);
-    if (isCustom) {
-      document.getElementById('edit-timer-custom-label').style.display = '';
-      document.getElementById('edit-timer-custom').value = current;
+    editModalTitle.textContent = 'Rest Timer (Between Sets)';
+    const REST_OPTIONS = [30, 69, 108, 147, 186, 225, 264, 303];
+    const current = profile.restTimerSeconds || 'off';
+    function fmtSecs(s) {
+      const m = Math.floor(s / 60), sec = s % 60;
+      return m > 0 ? `${m}:${String(sec).padStart(2, '0')}` : `${s}s`;
     }
-    sel.addEventListener('change', () => {
-      document.getElementById('edit-timer-custom-label').style.display =
-        sel.value === 'custom' ? '' : 'none';
-    });
+    const options = [`<option value="off">Off</option>`,
+      ...REST_OPTIONS.map(s => `<option value="${s}">${fmtSecs(s)}</option>`)
+    ].join('');
+    editFormFields.innerHTML = `
+      <label>Rest Duration
+        <select id="edit-timer-select">${options}</select>
+      </label>
+      <p class="coach-meta" style="margin-top:0.75rem;">A countdown appears between sets after you log each exercise.</p>`;
+    const sel = document.getElementById('edit-timer-select');
+    sel.value = String(current);
+    if (!sel.value) sel.value = 'off';
   }
 
   if (mode === 'warmup') {
@@ -333,12 +323,8 @@ async function saveChanges() {
   } else if (currentEditMode === 'timer') {
     const sel = document.getElementById('edit-timer-select');
     if (sel) {
-      if (sel.value === 'custom') {
-        const custom = document.getElementById('edit-timer-custom')?.value.trim();
-        profile.workoutTimerMinutes = custom || 'off';
-      } else {
-        profile.workoutTimerMinutes = sel.value;
-      }
+      const v = sel.value;
+      profile.restTimerSeconds = v === 'off' ? 'off' : parseInt(v);
     }
   } else if (currentEditMode === 'warmup') {
     const name = document.getElementById('edit-warmup-name').value.trim();

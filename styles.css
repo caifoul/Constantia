@@ -361,8 +361,11 @@ select option {
 }
 
 textarea {
-  min-height: 120px;
   resize: vertical;
+}
+
+#edit-warmup-steps {
+  min-height: 120px;
 }
 
 label {
@@ -1011,6 +1014,11 @@ legend {
   font-size: 0.9rem;
 }
 
+.ex-recent-log {
+  color: var(--success) !important;
+  font-weight: 600;
+}
+
 .exercise-selection-item .status {
   font-weight: 600;
   color: var(--success);
@@ -1401,6 +1409,18 @@ legend {
 .quit-confirm-btn:hover {
   background: rgba(255, 34, 102, 0.35);
   box-shadow: 0 0 12px rgba(255, 34, 102, 0.4);
+  transform: none;
+}
+
+.quit-discard-btn {
+  background: rgba(255, 140, 0, 0.15);
+  color: var(--warning, #ff8c00);
+  border: 1px solid rgba(255, 140, 0, 0.35);
+  box-shadow: none;
+}
+
+.quit-discard-btn:hover {
+  background: rgba(255, 140, 0, 0.3);
   transform: none;
 }
 
@@ -2260,10 +2280,15 @@ legend {
 
 .prog-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
   font-size: 0.95rem;
+}
+
+.prog-item:last-child {
+  border-bottom: none;
 }
 
 .prog-name {
@@ -2271,6 +2296,41 @@ legend {
   font-weight: 600;
   font-family: var(--font-graffiti);
   font-size: 1rem;
+}
+
+.prog-details {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+}
+
+.prog-this-week {
+  color: var(--text);
+}
+
+.prog-vs {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.prog-last-week {
+  color: var(--text-muted);
+}
+
+.prog-delta {
+  margin-left: auto;
+}
+
+.prog-same {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.prog-empty {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .prog-weight {

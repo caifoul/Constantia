@@ -172,9 +172,17 @@ export function getMotivationStyle() {
   }
 }
 
+const _lastShown = new Map();
+
 export function getMotivationalMessage(context) {
   const style = getMotivationStyle();
   const bank = MESSAGES[style]?.[context] || MESSAGES.moderate[context] || [];
   if (!bank.length) return null;
-  return bank[Math.floor(Math.random() * bank.length)];
+  if (bank.length === 1) return bank[0];
+  const key = `${style}:${context}`;
+  const last = _lastShown.get(key);
+  let idx;
+  do { idx = Math.floor(Math.random() * bank.length); } while (idx === last);
+  _lastShown.set(key, idx);
+  return bank[idx];
 }
