@@ -1,0 +1,12 @@
+{
+  "name": "Constantia",
+  "short_name": "Constantia",
+  "description": "Strength training tracker",
+  "start_url": "./home.html",
+  "display": "standalone",
+  "background_color": "#07000f",
+  "theme_color": "#07000f",
+  "icons": [
+    { "src": "logo.png", "sizes": "any", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

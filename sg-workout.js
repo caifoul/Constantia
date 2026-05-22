@@ -6,6 +6,7 @@ import { showWarmup } from './warmup.js';
 import { initSetRows, renderSetRows, readSetDetails, summarizeSets } from './set-rows.js';
 import { startRestTimer, stopRestTimer, restoreRestTimer } from './workout-timer.js';
 import { attachAutocomplete } from './exercise-autocomplete.js';
+import { initMusicWidget } from './music-player.js';
 
 const storageKey = 'constantiaExercises';
 let workouts = [];
@@ -166,20 +167,17 @@ function startFavoriteWorkout(sessionId) {
 }
 
 function createNewWorkout(workoutName) {
-  showWarmup(() => {
-    coachState = {
-      currentWorkout: { name: workoutName, exercises: [] },
-      currentSession: { workoutName, startTime: Date.now(), exercises: [] },
-      currentExerciseIndex: 0,
-      loggedExercises: new Set(),
-      missedExercises: new Set(),
-    };
-    persistNotebookSession();
-    showScreen('start-workout-screen');
-    document.getElementById('workout-title').textContent = workoutName;
-    document.getElementById('exercises-list').innerHTML =
-      '<p class="empty-state">New workout created! Add exercises first in the Log Workout section.</p>';
-  });
+  const newWorkout = {
+    id: `workout-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    name: workoutName,
+    exercises: [],
+    favorite: true,
+    timestamp: Date.now(),
+  };
+  workouts.push(newWorkout);
+  saveWorkouts();
+  if (currentUser) saveWorkoutToFirestore(newWorkout);
+  renderFavoriteWorkouts();
 }
 
 function showExerciseSelection() {
@@ -552,6 +550,8 @@ function discardAndExit() {
 
 // ── Events ────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  initMusicWidget('music-widget-notebook');
+
   const repHint = document.querySelector('.rep-hint');
   if (repHint) {
     try {
