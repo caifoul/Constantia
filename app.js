@@ -15,7 +15,7 @@ const suggestionsList = document.getElementById('exercise-suggestions');
 const sessionFavoriteCheckbox = document.getElementById('workout-favorite');
 const setsDetailEl = document.getElementById('sets-detail-list');
 
-const storageKey = 'strengthTrackerExercises';
+const storageKey = 'constantiaExercises';
 const popularExercises = [
   'Bench Press',
   'Incline Bench Press',
@@ -159,7 +159,7 @@ let pendingExerciseData = null;
 
 function getPreferredWarmup() {
   try {
-    const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+    const profile = JSON.parse(localStorage.getItem('constantiaProfile') || '{}');
     return profile.preferredWarmup || null;
   } catch { return null; }
 }
@@ -645,7 +645,7 @@ function updateRepHint() {
   const hint = document.querySelector('.rep-hint');
   if (!hint) return;
   try {
-    const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+    const profile = JSON.parse(localStorage.getItem('constantiaProfile') || '{}');
     const range = profile.preferredRepRange || profile.hypertrophy?.preferredRepRange;
     hint.textContent = range
       ? `Keep reps in your preferred range: ${range}`

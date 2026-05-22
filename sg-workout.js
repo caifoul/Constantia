@@ -7,7 +7,7 @@ import { initSetRows, renderSetRows, readSetDetails, summarizeSets } from './set
 import { startRestTimer, stopRestTimer, restoreRestTimer } from './workout-timer.js';
 import { attachAutocomplete } from './exercise-autocomplete.js';
 
-const storageKey = 'strengthTrackerExercises';
+const storageKey = 'constantiaExercises';
 let workouts = [];
 let currentUser = null;
 
@@ -106,7 +106,7 @@ function getLastExerciseLogForName(name) {
 
 function getRepRange() {
   try {
-    const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+    const profile = JSON.parse(localStorage.getItem('constantiaProfile') || '{}');
     const raw = profile.preferredRepRange || profile.hypertrophy?.preferredRepRange || '';
     const m = raw.match(/(\d+)\s*[-–]\s*(\d+)/);
     if (m) return { min: parseInt(m[1]), max: parseInt(m[2]) };
@@ -555,7 +555,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const repHint = document.querySelector('.rep-hint');
   if (repHint) {
     try {
-      const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+      const profile = JSON.parse(localStorage.getItem('constantiaProfile') || '{}');
       const range   = profile.preferredRepRange || profile.hypertrophy?.preferredRepRange;
       if (range) repHint.textContent = `Only log reps in your desired range of motion (target: ${range}).`;
     } catch (_) {}

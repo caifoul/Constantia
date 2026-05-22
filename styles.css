@@ -2,8 +2,8 @@
 
 :root {
   color-scheme: dark;
-  font-family: Inter, system-ui, sans-serif;
-  --font-graffiti: 'Permanent Marker', cursive;
+  font-family: 'Permanent Marker', cursive;
+  --font-graffiti: '2150000t', cursive;
   --glow-graffiti: 0 0 14px rgba(204, 0, 255, 0.75), 0 0 36px rgba(204, 0, 255, 0.35);
   background: #07000f;
   color: #eddeff;

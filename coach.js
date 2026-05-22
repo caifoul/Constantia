@@ -124,7 +124,7 @@ function getLastLog(exerciseName) {
 
 function getRepRange() {
   try {
-    const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+    const profile = JSON.parse(localStorage.getItem('constantiaProfile') || '{}');
     const raw = profile.preferredRepRange || profile.hypertrophy?.preferredRepRange || '';
     const m = raw.match(/(\d+)\s*[-–]\s*(\d+)/);
     if (m) return { min: parseInt(m[1]), max: parseInt(m[2]) };
@@ -646,11 +646,11 @@ async function saveAndEnd() {
   };
 
   try {
-    const stored = JSON.parse(localStorage.getItem('strengthTrackerExercises') || '[]');
+    const stored = JSON.parse(localStorage.getItem('constantiaExercises') || '[]');
     const idx = stored.findIndex(s => s.id === sessionId);
     if (idx !== -1) stored.splice(idx, 1, session);
     else stored.push(session);
-    localStorage.setItem('strengthTrackerExercises', JSON.stringify(stored));
+    localStorage.setItem('constantiaExercises', JSON.stringify(stored));
   } catch (_) {}
 
   if (state.currentUser) {
@@ -668,9 +668,10 @@ async function loadAllWorkouts() {
   try {
     const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'workouts'));
     state.allWorkouts = snap.docs.map(d => d.data());
+    try { localStorage.setItem('constantiaExercises', JSON.stringify(state.allWorkouts)); } catch (_) {}
   } catch (_) {
     try {
-      state.allWorkouts = JSON.parse(localStorage.getItem('strengthTrackerExercises') || '[]');
+      state.allWorkouts = JSON.parse(localStorage.getItem('constantiaExercises') || '[]');
     } catch (__) {
       state.allWorkouts = [];
     }

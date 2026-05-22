@@ -26,7 +26,7 @@ const POPULAR_EXERCISES = [
 
 function getRecentExerciseNames() {
   try {
-    const workouts = JSON.parse(localStorage.getItem('strengthTrackerExercises') || '[]');
+    const workouts = JSON.parse(localStorage.getItem('constantiaExercises') || '[]');
     const seen = new Map();
     workouts.forEach(w => {
       (w.exercises || []).forEach(ex => {
@@ -43,9 +43,15 @@ function getSuggestions(query) {
   const recent = getRecentExerciseNames();
   const q = query.trim().toLowerCase();
   if (q) {
-    const popMatches = POPULAR_EXERCISES.filter(e => e.toLowerCase().includes(q));
-    const recMatches = recent.filter(e => e.toLowerCase().includes(q));
-    return [...new Set([...popMatches, ...recMatches])].sort();
+    const all = [...new Set([...recent, ...POPULAR_EXERCISES])];
+    const startsWith = all.filter(e => e.toLowerCase().startsWith(q));
+    const contains   = all.filter(e => !e.toLowerCase().startsWith(q) && e.toLowerCase().includes(q));
+    // Within each bucket, user's own history comes first
+    const recentSet = new Set(recent);
+    const rank = e => recentSet.has(e) ? 0 : 1;
+    startsWith.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+    contains.sort((a, b)   => rank(a) - rank(b) || a.localeCompare(b));
+    return [...startsWith, ...contains];
   }
   const recentSet = new Set(recent);
   return [...recent, ...POPULAR_EXERCISES.filter(e => !recentSet.has(e))];
@@ -61,7 +67,7 @@ export function attachAutocomplete(inputEl, onSelect = () => {}) {
   inputEl.insertAdjacentElement('afterend', list);
 
   function show(query) {
-    const matches = getSuggestions(query).slice(0, 12);
+    const matches = getSuggestions(query).slice(0, 16);
     if (!matches.length) { list.style.display = 'none'; return; }
     list.innerHTML = matches.map(n => `<li class="suggestion-item">${n}</li>`).join('');
     list.style.display = 'block';

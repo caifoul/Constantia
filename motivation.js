@@ -165,7 +165,7 @@ const MESSAGES = {
 
 export function getMotivationStyle() {
   try {
-    const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+    const profile = JSON.parse(localStorage.getItem('constantiaProfile') || '{}');
     return profile.motivationStyle || 'moderate';
   } catch (_) {
     return 'moderate';

@@ -39,8 +39,8 @@ function closeModal() {
 }
 
 function renderProfile() {
-  const account = JSON.parse(localStorage.getItem('strengthTrackerAccount') || '{}');
-  const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+  const account = JSON.parse(localStorage.getItem('constantiaAccount') || '{}');
+  const profile = JSON.parse(localStorage.getItem('constantiaProfile') || '{}');
 
   if (account.provider === 'google') {
     accountInfo.innerHTML = `
@@ -127,7 +127,7 @@ function renderProfile() {
 
 function openEditModal(mode) {
   currentEditMode = mode;
-  const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+  const profile = JSON.parse(localStorage.getItem('constantiaProfile') || '{}');
   editFormFields.innerHTML = '';
 
   if (mode === 'profile') {
@@ -260,7 +260,7 @@ function openEditModal(mode) {
 
   if (mode === 'timer') {
     editModalTitle.textContent = 'Rest Timer (Between Sets)';
-    const REST_OPTIONS = [30, 69, 108, 147, 186, 225, 264, 303];
+    const REST_OPTIONS = [30, 60, 90, 120, 150, 180, 210, 240];
     const current = profile.restTimerSeconds || 'off';
     function fmtSecs(s) {
       const m = Math.floor(s / 60), sec = s % 60;
@@ -298,7 +298,7 @@ function openEditModal(mode) {
 }
 
 async function saveChanges() {
-  const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+  const profile = JSON.parse(localStorage.getItem('constantiaProfile') || '{}');
 
   if (currentEditMode === 'profile') {
     profile.ageRange = document.getElementById('edit-age-range').value;
@@ -345,7 +345,7 @@ async function saveChanges() {
     await setDoc(doc(db, 'users', currentUser.uid), { profile }, { merge: true });
   }
 
-  localStorage.setItem('strengthTrackerProfile', JSON.stringify(profile));
+  localStorage.setItem('constantiaProfile', JSON.stringify(profile));
   closeModal();
   renderProfile();
 }
@@ -357,14 +357,14 @@ onAuthStateChanged(auth, async (user) => {
   const userDoc = await getDoc(doc(db, 'users', user.uid));
   if (userDoc.exists()) {
     const data = userDoc.data();
-    localStorage.setItem('strengthTrackerAccount', JSON.stringify({
+    localStorage.setItem('constantiaAccount', JSON.stringify({
       email: data.email,
       username: data.username,
       provider: data.provider,
       createdAt: data.createdAt,
     }));
     if (data.profile) {
-      localStorage.setItem('strengthTrackerProfile', JSON.stringify(data.profile));
+      localStorage.setItem('constantiaProfile', JSON.stringify(data.profile));
     }
   }
 
@@ -395,9 +395,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   signOutBtn.addEventListener('click', async () => {
     await signOut(auth);
-    localStorage.removeItem('strengthTrackerAccount');
-    localStorage.removeItem('strengthTrackerProfile');
-    localStorage.removeItem('strengthTrackerAuth');
+    localStorage.removeItem('constantiaAccount');
+    localStorage.removeItem('constantiaProfile');
+    localStorage.removeItem('constantiaAuth');
     window.location.href = 'signup.html';
   });
 });

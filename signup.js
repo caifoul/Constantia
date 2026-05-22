@@ -135,7 +135,7 @@ async function showSummary() {
     await setDoc(doc(db, 'users', currentUser.uid), { profile: savedProfile }, { merge: true });
   }
 
-  localStorage.setItem('strengthTrackerProfile', JSON.stringify(savedProfile));
+  localStorage.setItem('constantiaProfile', JSON.stringify(savedProfile));
   window.location.href = 'home.html';
 }
 

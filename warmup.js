@@ -33,7 +33,7 @@ const WARMUP_PRESETS = [
 
 function getPreferredWarmup() {
   try {
-    const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+    const profile = JSON.parse(localStorage.getItem('constantiaProfile') || '{}');
     return profile.preferredWarmup || null;
   } catch (_) { return null; }
 }

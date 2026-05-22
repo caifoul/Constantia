@@ -3,7 +3,7 @@ import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/f
 import { collection, doc, setDoc, getDocs, deleteDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { initSetRows, renderSetRows, readSetDetails, summarizeSets } from './set-rows.js';
 
-const storageKey = 'strengthTrackerExercises';
+const storageKey = 'constantiaExercises';
 const favoritesList = document.getElementById('favorites-list');
 const clearFavoritesButton = document.getElementById('clear-favorites');
 

@@ -1,8 +1,8 @@
 // Rest timer — counts down between exercises/sets
-// Options: Off, 30s, 69s, 108s, … (start 30, step +39)
+// Options: Off, 30s, 60s, 90s, … (start 30, step +30)
 
 const TIMER_KEY = 'restTimerEndTime';
-export const REST_OPTIONS = [30, 69, 108, 147, 186, 225, 264, 303]; // seconds
+export const REST_OPTIONS = [30, 60, 90, 120, 150, 180, 210, 240]; // seconds
 
 let _tick = null;
 
@@ -17,7 +17,7 @@ export function fmtSecs(s) {
 
 function getConfiguredSeconds() {
   try {
-    const profile = JSON.parse(localStorage.getItem('strengthTrackerProfile') || '{}');
+    const profile = JSON.parse(localStorage.getItem('constantiaProfile') || '{}');
     const v = profile.restTimerSeconds;
     if (!v || v === 'off') return null;
     const n = parseInt(v);
