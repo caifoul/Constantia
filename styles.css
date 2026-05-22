@@ -1,9 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Finger+Paint&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Rock+Salt&display=swap');
 
 :root {
   color-scheme: dark;
   font-family: 'Permanent Marker', cursive;
-  --font-graffiti: 'Finger Paint', cursive;
+  --font-graffiti: 'Rock Salt', cursive;
   --glow-graffiti: 0 0 14px rgba(204, 0, 255, 0.75), 0 0 36px rgba(204, 0, 255, 0.35);
   background: #07000f;
   color: #eddeff;
